@@ -1,4 +1,4 @@
-"""audio_debrief — local diarized transcript + delivery metrics for interview debriefs.
+"""audio_debrief — local diarized transcript + delivery metrics for debriefing recorded conversations.
 
 Nothing here touches the network except the first-time model downloads from
 HuggingFace (faster-whisper large-v3, pyannote diarization + embedding models).

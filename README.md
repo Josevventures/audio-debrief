@@ -4,15 +4,15 @@ Local, offline analysis of a recorded conversation. Feed it an audio file and it
 produces a diarized, timestamped transcript plus delivery metrics for one speaker
 (you): talk time, answer lengths against targets, pace, fillers, pauses, tone
 proxies, and a proper-noun diff against a second transcript if you have one.
-Interview practice is the case it was built for; any two-or-more-person recording
-works.
+Any recording of you plus one or more other people is the general case; the
+story below is the one it was built for.
 
 Audio never leaves the machine. The only network traffic is the one-time model
 download from HuggingFace.
 
 ## Why this exists
 
-I record my interviews (with consent) and debrief afterwards. The debrief used to
+I record my conversations (with consent) and debrief afterwards. The debrief used to
 run off the phone's live transcript, which tells you what was said but nothing
 about how: how long each answer ran, where the fillers piled up, whether a pause
 was a real hesitation or the other person nodding along. I wanted the debrief
@@ -51,8 +51,9 @@ report is still written with the sections that could be computed.
 **convert.** ffmpeg to 16 kHz mono PCM WAV. Cached.
 
 **transcribe.** faster-whisper (`large-v3` by default) with word timestamps and
-VAD. Hotwords from `config.yaml`, `--speakers`, and the output folder's parent
-name go into the initial prompt so names and jargon are spelled right.
+VAD. The initial prompt is `context_prompt` from `config.yaml` (one short sentence
+about the kind of recording; default `Conversation.`) followed by the hotwords from
+`config.yaml` and `--speakers`, so names and jargon are spelled right.
 
 **diarize (hybrid, default).** Whisper's words are split into units at silences
 longer than `hybrid.unit_gap_s` and capped at `hybrid.unit_max_s`. Each unit is
@@ -61,7 +62,7 @@ cosine similarity to `voiceprints/self.npy` is at least `voiceprint.match_thresh
 an ambiguous band down to `voiceprint.ambiguous_low` inherits the previous unit's
 label. The remaining units are clustered (average linkage, cosine distance
 `voiceprint.cluster_threshold`) so panels work. Far-side audio fragments badly at
-the unit level (one interviewer came out as 96 raw clusters), so only clusters
+the unit level (one far-side speaker came out as 96 raw clusters), so only clusters
 with at least `voiceprint.min_cluster_s` of speech count as speakers, speaker
 clusters whose centroids agree above `voiceprint.centroid_merge_sim` are merged,
 and every smaller fragment is absorbed into the most similar speaker. A final
@@ -84,10 +85,11 @@ other speaker's run, because people rarely phrase prompts as questions; the JSON
 carries `is_question` as a flag and `latency_s` (silence before you start).
 Each answer gets word count, WPM, filler count and rate, pause count, and a
 length target with an `OVER` flag when its trigger matches an `answer_targets`
-pattern. Answers are tagged `rehearsed` when the trigger fuzzy-matches a question
-in `qa_prep.md` (rapidfuzz `token_set_ratio` at or above
-`rehearsed_match_threshold`, and sharing at least one content word) or a prepped
-category keyword, `improvised` otherwise, `unknown` with no `qa_prep.md`.
+pattern. `prep.md` holds prepared questions or talking points as `### N. ...`
+headings; answers whose trigger fuzzy-matches one are tagged `prepared` (rapidfuzz
+`token_set_ratio` at or above `prepared_match_threshold`, and sharing at least one
+content word), others `improvised`. A trigger matching an `answer_targets`
+pattern is `prepared` regardless. With no `prep.md` every answer is `unknown`.
 Pauses inside your speech longer than `pause_threshold_s` are listed with the five
 words before them and a `kind` read from the waveform: `silence` when the RMS
 inside the gap is well below your whole-call speech level, otherwise
@@ -98,9 +100,11 @@ inside the gap is well below your whole-call speech level, otherwise
 answer, z-scored against the spread of the same values across all of your
 utterances on the call. See the caveat below.
 
-**nouns.** If a second transcript exists (a phone recorder's `.txt` export, for
-instance), a token-level diff surfaces proper-noun disagreements as a table:
-`recorder | whisper | count | first at | direction | confirmed`. `direction` says
+**nouns.** If a reference transcript exists (any second transcript of the same
+recording, such as a phone recorder's `.txt` export), a token-level diff surfaces
+proper-noun disagreements as a table:
+`reference | whisper | count | first at | direction | confirmed`. `direction`
+(`reference→whisper`, `whisper→reference`, or `unclear`) says
 which side looks right (a hotword or a capitalized mid-sentence token wins);
 `confirmed` is pre-filled when the better side is a known hotword.
 
@@ -145,10 +149,13 @@ cached in the HF hub cache under your user profile.
 
 ## Usage
 
+Nothing below is interview-specific; `answer_targets` in `config.yaml` is the only
+interview-shaped default and can be emptied.
+
 ```
 uv run python -m audio_debrief run \
   --audio "recordings/2026-01-15 call.m4a" \
-  --round-dir "recordings/2026-01-15" \
+  --out-dir "recordings/2026-01-15" \
   --date 2026-01-15 \
   --me "Sam" \
   --speakers "Alex Rivera"
@@ -156,16 +163,17 @@ uv run python -m audio_debrief run \
 
 | Flag | Default | Meaning |
 |---|---|---|
+| `--out-dir` | required | Output folder; also holds `.audio_cache/` |
 | `--me` | config `self_name` (`Me`) | Your display name in the outputs |
-| `--speakers` | names parsed from `../interviewer_*.md` headings, if any | The other participants, in order of first appearance |
-| `--recorder-text` | first `*.txt` in `--round-dir` | A second transcript for the proper-noun diff |
-| `--qa-prep` | `round-dir/qa_prep.md` | `### N. Question` headings drive rehearsed/improvised tagging |
+| `--speakers` | none (others become `Speaker 1`, `Speaker 2`, ...) | The other participants' names, in order of first appearance; also added to the hotwords |
+| `--reference-transcript` | first `*.txt` in `--out-dir` | Any second transcript of the same recording, for the proper-noun diff |
+| `--prep` | `out-dir/prep.md` | Prepared questions or talking points as `### N. ...` headings; drives `prepared`/`improvised` tagging |
 | `--diarizer` | `hybrid` (config `diarizer`) | `hybrid` or `pyannote` (see above) |
 | `--device` | `cuda` | `cpu` forces CPU (Whisper int8) |
 | `--model` | `large-v3` | Any faster-whisper model name |
 | `--no-cache` | off | Ignore `.audio_cache/` and recompute every stage |
 | `--non-interactive` | off | Never prompt; exit 2 if no voiceprint exists |
-| `--config` | `config.yaml` in the repo root | Fillers, thresholds, answer targets, hotwords |
+| `--config` | `config.yaml` in the repo root | Context prompt, fillers, thresholds, answer targets, hotwords |
 
 Exit code: 0 when every stage is `ok` (speakers may be `unmatched`), 1 when any
 stage failed or was skipped (the report is still written), 2 for a setup problem.
@@ -185,7 +193,7 @@ uv run python -m audio_debrief enroll --audio "<same audio>" --speaker-label SPE
 ```
 
 `enroll` reuses the cached conversion, transcription and embeddings, so it is
-quick; then re-run `run`. Optional `--round-dir` tells `enroll` where
+quick; then re-run `run`. Optional `--out-dir` tells `enroll` where
 `.audio_cache/` lives (default: the audio's own folder).
 
 ### Prosody caveat
@@ -200,7 +208,7 @@ find moments worth listening to, not as findings on their own.
 
 ### Cache behavior
 
-Every stage writes its intermediate to `<round-dir>/.audio_cache/` (`audio.wav`,
+Every stage writes its intermediate to `<out-dir>/.audio_cache/` (`audio.wav`,
 `whisper.json`, `diarization.json`, `embeddings.json`, `unit_embeddings.npz`) and
 skips itself on re-run when the file exists. A cached diarization produced by the
 other diarizer, or by hybrid before a voiceprint existed, is recomputed
@@ -217,8 +225,8 @@ alignment, metrics, prosody, nouns and the report, which is how you iterate on
 | No HF token / terms not accepted | exit 2 with the three setup steps; nothing else runs |
 | No voiceprint | interactive enroll; with `--non-interactive` or no TTY, exit 2 with the enroll command |
 | No speaker above the voiceprint threshold | `Speaker N` labels, `analysis_status.speakers = unmatched`; no guess |
-| `qa_prep.md` missing | answers tagged `unknown`; noted in status |
-| Second transcript missing | noun section skipped; noted in status |
+| `prep.md` missing | answers tagged `unknown`; noted in status |
+| Reference transcript missing | noun section skipped; noted in status |
 | Any stage exception | stage `failed` with message; dependents `skipped`; report still written |
 
 ## Tests

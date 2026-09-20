@@ -5,7 +5,7 @@ ME, OTHER = "Sam", "Alex Rivera"  # matches conftest.speaker_map
 
 SECTIONS = [
     "## Analysis status", "## Talk time", "## Answer map", "## Fillers", "## Pace and pauses",
-    "## Interruptions", "## Tone proxies", "## Proper-noun corrections", "## Rehearsed vs improvised",
+    "## Interruptions", "## Tone proxies", "## Proper-noun corrections", "## Prepared vs improvised",
 ]
 
 
@@ -42,15 +42,15 @@ def test_markdown_sections_in_order_when_everything_missing():
     assert report.PROSODY_CONFIDENCE_NOTE in md
 
 
-def test_markdown_with_full_metrics(named_call, qa_questions, config):
+def test_markdown_with_full_metrics(named_call, prep_questions, config):
     from audio_debrief import metrics
     utts, turns, overlaps = named_call
     status = pipeline.new_status()
     for s in pipeline.STAGES:
         pipeline.mark_ok(status, s)
     a = minimal_analysis(status)
-    a["metrics"] = metrics.compute_metrics(utts, turns, overlaps, ME, qa_questions, config)
-    a["noun_corrections"] = [{"recorder_spelling": "Alec", "whisper_spelling": "Alex",
+    a["metrics"] = metrics.compute_metrics(utts, turns, overlaps, ME, prep_questions, config)
+    a["noun_corrections"] = [{"reference_spelling": "Alec", "whisper_spelling": "Alex",
                               "count": 2, "first_timestamp": "00:00", "confirmed": "yes"}]
     a["prosody"] = {"baseline": {"f0_median_hz": 120.0, "f0_std_hz": 20.0, "rms_mean": 0.05, "rms_var": 0.001},
                     "answers": [{"start": 5.0, "f0_median_hz": 125.0, "f0_std_hz": 18.0, "rms_mean": 0.06,
@@ -59,12 +59,12 @@ def test_markdown_with_full_metrics(named_call, qa_questions, config):
     positions = [md.index(s) for s in SECTIONS]
     assert positions == sorted(positions)
     assert "Alec" in md and "Alex" in md
-    assert "rehearsed" in md and "improvised" in md
+    assert "prepared" in md and "improvised" in md
     assert OTHER in md and ME in md
     assert f"{ME} baseline (whole call)" in md and f"{ME} by filler" in md
     # answer map rows really render (question text, mode, target flag), not just the header
     answer_section = md[md.index("## Answer map"):md.index("## Fillers")]
-    assert "| 1 | 00:05 | 25 s | Hi Sam, can you walk me through your background? | rehearsed |" in answer_section
+    assert "| 1 | 00:05 | 25 s | Hi Sam, can you walk me through your background? | prepared |" in answer_section
     assert "(background_walkthrough) — ok" in answer_section
     assert "| 2 | 00:49 |" in answer_section
     pause_section = md[md.index("## Pace and pauses"):md.index("## Interruptions")]
@@ -79,13 +79,13 @@ def test_markdown_with_full_metrics(named_call, qa_questions, config):
     assert report.build_json(a)["answers"][0]["question"].startswith("w0 w1")
 
 
-def test_json_shape(named_call, qa_questions, config):
+def test_json_shape(named_call, prep_questions, config):
     from audio_debrief import metrics
     utts, turns, overlaps = named_call
     status = pipeline.new_status()
     pipeline.mark_failed(status, "transcribe", "x")
     a = minimal_analysis(status)
-    a["metrics"] = metrics.compute_metrics(utts, turns, overlaps, ME, qa_questions, config)
+    a["metrics"] = metrics.compute_metrics(utts, turns, overlaps, ME, prep_questions, config)
     data = report.build_json(a)
     text = json.dumps(data)  # must be serializable
     data = json.loads(text)
@@ -98,13 +98,13 @@ def test_json_shape(named_call, qa_questions, config):
         assert key in data
 
 
-def test_header_names_the_diarizer_and_interruptions_say_not_measured(named_call, qa_questions, config):
+def test_header_names_the_diarizer_and_interruptions_say_not_measured(named_call, prep_questions, config):
     from audio_debrief import metrics
     utts, turns, _ = named_call
     status = pipeline.new_status()
     a = minimal_analysis(status)
     a["diarization_method"] = "hybrid"
-    a["metrics"] = metrics.compute_metrics(utts, turns, [], ME, qa_questions, config, overlaps_measured=False)
+    a["metrics"] = metrics.compute_metrics(utts, turns, [], ME, prep_questions, config, overlaps_measured=False)
     md = report.render_markdown(a)
     assert "Diarization: hybrid (whisper-VAD + wespeaker)" in md.splitlines()[2]
     section = md[md.index("## Interruptions"):md.index("## Tone proxies")]

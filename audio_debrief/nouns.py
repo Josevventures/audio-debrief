@@ -1,5 +1,6 @@
-"""Proper-noun diff between the Recorder text and the Whisper transcript,
-plus the two small markdown parsers (qa_prep questions, interviewer names)."""
+"""Proper-noun diff between a reference transcript (any second transcript of the same
+recording, e.g. a phone recorder's .txt export) and the Whisper transcript, plus the
+small markdown parser for prep.md (`### N. Question` headings)."""
 from __future__ import annotations
 
 import difflib
@@ -33,7 +34,7 @@ def tokenize(chunks) -> list[dict]:
     return tokens
 
 
-def recorder_chunks(text: str):
+def reference_chunks(text: str):
     text = _SPEAKER_LABEL_RE.sub("", text)
     for line in text.splitlines():
         if line.strip():
@@ -108,13 +109,13 @@ def _keep(l: dict, r: dict, stop: set) -> bool:
 
 def _direction(l: dict, r: dict) -> str:
     wl, wr = _weight(l), _weight(r)
-    return "recorder→whisper" if wr > wl else ("whisper→recorder" if wl > wr else "unclear")
+    return "reference→whisper" if wr > wl else ("whisper→reference" if wl > wr else "unclear")
 
 
-def noun_corrections(recorder_text: str, whisper_words: list[dict], hotwords: list[str],
+def noun_corrections(reference_text: str, whisper_words: list[dict], hotwords: list[str],
                      stoplist: set | None = None) -> list[dict]:
     stop = STOPLIST if stoplist is None else set(stoplist)
-    rec = merge_hotwords(tokenize(recorder_chunks(recorder_text)), hotwords)
+    rec = merge_hotwords(tokenize(reference_chunks(reference_text)), hotwords)
     whi = merge_hotwords(tokenize(whisper_chunks(whisper_words)), hotwords)
     sm = difflib.SequenceMatcher(None, [t["lower"] for t in rec], [t["lower"] for t in whi], autojunk=False)
     rows: dict[tuple[str, str], dict] = {}
@@ -130,10 +131,10 @@ def noun_corrections(recorder_text: str, whisper_words: list[dict], hotwords: li
             if not _keep(l, r, stop):
                 continue
             direction = _direction(l, r)
-            right_side = r if direction == "recorder→whisper" else (l if direction == "whisper→recorder" else None)
+            right_side = r if direction == "reference→whisper" else (l if direction == "whisper→reference" else None)
             key = (l["text"], r["text"])
             row = rows.setdefault(key, {
-                "recorder_spelling": l["text"], "whisper_spelling": r["text"], "count": 0,
+                "reference_spelling": l["text"], "whisper_spelling": r["text"], "count": 0,
                 "first_timestamp": mmss(r["start"] or 0), "_start": r["start"] or 0, "direction": direction,
                 "confirmed": "yes" if right_side is not None and right_side["hotword"] else ""})
             row["count"] += 1
@@ -145,27 +146,16 @@ def noun_corrections(recorder_text: str, whisper_words: list[dict], hotwords: li
     return out
 
 
-# --- small parsers ------------------------------------------------------------
+# --- small parser ------------------------------------------------------------
 
-_QA_RE = re.compile(r"^###\s*\d+\.\s*(.+?)\s*$")
-_INTERVIEWER_RE = re.compile(r"^#\s*Interviewer Profile\s*[—–-]\s*(.+?)\s*$")
+_PREP_RE = re.compile(r"^###\s*\d+\.\s*(.+?)\s*$")
 
 
-def parse_qa_questions(path: str | Path) -> list[str]:
+def parse_prep_questions(path: str | Path) -> list[str]:
     out = []
     for line in Path(path).read_text(encoding="utf-8").splitlines():
-        m = _QA_RE.match(line.strip())
+        m = _PREP_RE.match(line.strip())
         if m:
             out.append(m.group(1))
     return out
 
-
-def parse_interviewer_names(company_dir: str | Path) -> list[str]:
-    names = []
-    for p in sorted(Path(company_dir).glob("interviewer_*.md")):
-        with open(p, encoding="utf-8") as fh:
-            first = fh.readline().strip()
-        m = _INTERVIEWER_RE.match(first)
-        if m:
-            names.append(m.group(1))
-    return names

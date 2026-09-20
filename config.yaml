@@ -3,6 +3,11 @@
 # Display name for you (the enrolled voiceprint) in every output. Override per run with --me.
 self_name: Me
 
+# One short sentence describing the kind of recording; it opens the Whisper initial
+# prompt and helps it settle on the right register and vocabulary ("Board meeting.",
+# "Weekly team standup.", "Podcast episode about climate policy.").
+context_prompt: "Conversation."
+
 # Filler words/phrases, matched on the word stream (phrases consume their words,
 # so "kind of like" counts once, not as "like" too). "right?" requires the
 # question mark. Verb "like" vs filler "like" is NOT distinguished: raw count.
@@ -59,13 +64,15 @@ pause_threshold_s: 2.0
 pause_silence_ratio: 0.6
 # Only overlaps at least this long count as interruptions.
 overlap_min_s: 0.5
-# rapidfuzz token_set_ratio >= this against a qa_prep.md question => "rehearsed"
-# (a trigger matching an answer_targets pattern is rehearsed regardless).
-rehearsed_match_threshold: 60
+# prep.md holds prepared questions or talking points as "### N. ..." headings
+# (--prep to point elsewhere). Answers whose trigger fuzzy-matches one are tagged
+# `prepared` (rapidfuzz token_set_ratio >= this, sharing at least one content word),
+# others `improvised`. A trigger matching an answer_targets pattern is `prepared` regardless.
+prepared_match_threshold: 60
 
 # Answer-length targets in seconds, matched by regex (case-insensitive) on the
 # triggering question. First match wins; answers longer than the target are flagged.
-# These defaults suit a job interview; edit or empty the list for other conversations.
+# Example targets for a job interview. Edit for your use case or set to `{}` to disable length flags.
 answer_targets:
   background_walkthrough:
     seconds: 90
@@ -86,15 +93,7 @@ answer_targets:
     seconds: 30
     pattern: "relocat|travel|timeline|interviewing elsewhere|notice period|start date"
 
-# Fixed hotwords for the Whisper initial prompt and the proper-noun table.
-# Add your own name, your employers and schools, and the company you are talking to;
-# the output folder's parent name and --speakers are added at run time.
-hotwords:
-  - MBA
-  - AI
-  - private equity
-  - due diligence
-  - venture capital
-  - carve-out
-  - CRM
-  - PMO
+# Fixed hotwords for the Whisper initial prompt and the proper-noun table. Add your own
+# name, employers, schools, product names, and the other participants' names and
+# organization; --speakers values are added at run time.
+hotwords: []

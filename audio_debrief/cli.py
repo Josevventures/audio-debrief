@@ -24,19 +24,21 @@ def _args(argv):
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="analyze a recording into the output folder")
     r.add_argument("--audio", required=True)
-    r.add_argument("--round-dir", required=True, help="output folder; also holds .audio_cache/")
+    r.add_argument("--out-dir", required=True, help="output folder; also holds .audio_cache/")
     r.add_argument("--date", required=True, help="YYYY-MM-DD used in output file names")
     r.add_argument("--me", help="your display name in the outputs (default: config self_name)")
-    r.add_argument("--recorder-text", help="default: first *.txt in round-dir")
+    r.add_argument("--reference-transcript", help="a second transcript of the same recording, for the "
+                   "proper-noun diff (default: first *.txt in out-dir)")
     r.add_argument("--speakers", nargs="*", help="the other participants' names, in order of first appearance")
-    r.add_argument("--qa-prep", help="default: round-dir/qa_prep.md")
+    r.add_argument("--prep", help="prepared questions or talking points (### N. headings); "
+                   "default: out-dir/prep.md")
     r.add_argument("--no-cache", action="store_true")
     r.add_argument("--non-interactive", action="store_true", help="never prompt; exit 2 if no voiceprint")
     e = sub.add_parser("enroll", help="save a voiceprint for one diarized speaker")
     e.add_argument("--audio", required=True)
     e.add_argument("--speaker-label", required=True, help="e.g. SPEAKER_01 (see run's prompt output)")
     e.add_argument("--name", default="self", help="voiceprint file name under voiceprints/ (default: self)")
-    e.add_argument("--round-dir", help="where .audio_cache lives; default: the audio's folder")
+    e.add_argument("--out-dir", help="output folder; also holds .audio_cache/ (default: the audio's folder)")
     for sp in (r, e):
         sp.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
         sp.add_argument("--model", default="large-v3")
@@ -104,8 +106,8 @@ def run(a) -> int:
     cfg = load_config(a.config)
     status, use_cache = new_status(), not a.no_cache
     diarizer = a.diarizer or cfg.get("diarizer", "hybrid")
-    audio, round_dir = Path(a.audio), Path(a.round_dir)
-    cache = round_dir / ".audio_cache"
+    audio, out_dir = Path(a.audio), Path(a.out_dir)
+    cache = out_dir / ".audio_cache"
     cache.mkdir(parents=True, exist_ok=True)
     token = diarize.require_token()  # exit 2 before anything else runs
     voiceprint = speakers.load_voiceprint()
@@ -113,16 +115,17 @@ def run(a) -> int:
         raise SetupError(f"No voiceprint at {speakers.voiceprint_path()} and --non-interactive set. Run `enroll` first.")
 
     me = a.me or cfg.get("self_name", "Me")
-    names = a.speakers or nouns.parse_interviewer_names(round_dir.parent)
-    hotwords = [round_dir.parent.name, *names, *cfg["hotwords"]]
-    qa_path = Path(a.qa_prep) if a.qa_prep else round_dir / "qa_prep.md"
-    qa = nouns.parse_qa_questions(qa_path) if qa_path.exists() else None
-    txts = [Path(a.recorder_text)] if a.recorder_text else sorted(round_dir.glob("*.txt"))
-    recorder = txts[0] if txts and txts[0].exists() else None
+    names = a.speakers or []
+    hotwords = [*names, *(cfg.get("hotwords") or [])]
+    context_prompt = cfg.get("context_prompt") or "Conversation."
+    prep_path = Path(a.prep) if a.prep else out_dir / "prep.md"
+    prep = nouns.parse_prep_questions(prep_path) if prep_path.exists() else None
+    txts = [Path(a.reference_transcript)] if a.reference_transcript else sorted(out_dir.glob("*.txt"))
+    reference = txts[0] if txts and txts[0].exists() else None
 
     wav = run_stage(status, "convert", lambda: convert.to_wav(audio, cache / "audio.wav", use_cache))
     whisper = run_stage(status, "transcribe", lambda: cached_json(
-        cache / "whisper.json", lambda: transcribe.transcribe(wav, a.model, a.device, hotwords), use_cache))
+        cache / "whisper.json", lambda: transcribe.transcribe(wav, a.model, a.device, hotwords, context_prompt), use_cache))
     if whisper and whisper["info"].get("warning"):
         mark(status, "transcribe", "ok", whisper["info"]["warning"])
     diar = run_stage(status, "diarize", lambda: _diarize(
@@ -160,7 +163,7 @@ def run(a) -> int:
     utts = run_stage(status, "align", align_stage)
 
     def metrics_stage():
-        result = metrics.compute_metrics(utts, turns, diar["overlaps"], me, qa, cfg,
+        result = metrics.compute_metrics(utts, turns, diar["overlaps"], me, prep, cfg,
                                          overlaps_measured=(diar.get("method") == "pyannote"))
         y, sr = convert.load_waveform(wav)
         prosody.annotate_pauses(result["pauses"], y, sr, cfg["pause_silence_ratio"],
@@ -168,21 +171,21 @@ def run(a) -> int:
         return result
 
     m = run_stage(status, "metrics", metrics_stage)
-    if qa is None and status["metrics"]["status"] == "ok":
-        mark(status, "metrics", "ok", f"qa_prep.md not found at {qa_path}: answer modes are 'unknown'")
+    if prep is None and status["metrics"]["status"] == "ok":
+        mark(status, "metrics", "ok", f"prep.md not found at {prep_path}: answer modes are 'unknown'")
     pros = run_stage(status, "prosody", lambda: prosody.analyze(wav, utts, m["answers"], me))
-    if recorder is None:
-        mark(status, "nouns", "skipped", "no Recorder .txt found in round-dir")
+    if reference is None:
+        mark(status, "nouns", "skipped", "no reference transcript (*.txt) found in out-dir")
     nn = run_stage(status, "nouns", lambda: nouns.noun_corrections(
-        recorder.read_text(encoding="utf-8", errors="replace"), whisper["words"], hotwords))
+        reference.read_text(encoding="utf-8", errors="replace"), whisper["words"], hotwords))
 
     analysis = {"date": a.date, "audio": audio.name, "self": me, "analysis_status": status,
                 "diarization_method": diar.get("method") if diar else diarizer,
                 "speaker_map": speaker_map, "metrics": m, "prosody": pros, "noun_corrections": nn,
                 "transcribe_info": whisper["info"] if whisper else {}}
-    paths = run_stage(status, "report", lambda: report.write_outputs(round_dir, a.date, analysis, utts))
+    paths = run_stage(status, "report", lambda: report.write_outputs(out_dir, a.date, analysis, utts))
     if paths is None:  # report itself failed: last-ditch write of the status JSON
-        paths = report.write_outputs(round_dir, a.date, {**analysis, "metrics": None, "prosody": None}, None)
+        paths = report.write_outputs(out_dir, a.date, {**analysis, "metrics": None, "prosody": None}, None)
     for p in paths:
         print(f"wrote {p}")
     return 0 if all(v["status"] in ("ok", "unmatched") for v in status.values()) else 1
@@ -194,14 +197,15 @@ def enroll(a) -> int:
     cfg = load_config(a.config)
     diarizer = a.diarizer or cfg.get("diarizer", "hybrid")
     audio = Path(a.audio)
-    cache = (Path(a.round_dir) if a.round_dir else audio.parent) / ".audio_cache"
+    cache = (Path(a.out_dir) if a.out_dir else audio.parent) / ".audio_cache"
     cache.mkdir(parents=True, exist_ok=True)
     token = diarize.require_token()
     wav = convert.to_wav(audio, cache / "audio.wav", True)
     whisper = None
     if diarizer == "hybrid":
         whisper = cached_json(cache / "whisper.json",
-                              lambda: transcribe.transcribe(wav, a.model, a.device, cfg["hotwords"]), True)
+                              lambda: transcribe.transcribe(wav, a.model, a.device, cfg.get("hotwords") or [],
+                                                            cfg.get("context_prompt") or "Conversation."), True)
     d = _diarize(diarizer, cache, wav, whisper, None, cfg, a.device, token, True)
     embs = _speaker_embeddings(d, cache, wav, a.device, True, token)
     if a.speaker_label not in embs:

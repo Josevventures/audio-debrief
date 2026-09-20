@@ -1,4 +1,4 @@
-# Q&A Prep — Synthetic
+# Prep — Synthetic
 
 ### 1. Walk me through your background.
 Notes.

@@ -135,46 +135,46 @@ def test_short_overlap_ignored(named_call):
     assert metrics.overlap_events(turns, [{"start": 30.5, "end": 30.8}], 0.5) == []
 
 
-def test_mode_tagging_by_token_set_ratio(qa_questions, config):
-    thr, targets = config["rehearsed_match_threshold"], config["answer_targets"]
-    assert metrics.tag_mode("Hi Sam, can you walk me through your background?", qa_questions, thr, targets) == "rehearsed"
+def test_mode_tagging_by_token_set_ratio(prep_questions, config):
+    thr, targets = config["prepared_match_threshold"], config["answer_targets"]
+    assert metrics.tag_mode("Hi Sam, can you walk me through your background?", prep_questions, thr, targets) == "prepared"
     loose = ("It would be great to hear your story. Maybe walk me through where you studied and the roles "
              "you have held since.")
-    assert metrics.tag_mode(loose, qa_questions, thr, targets) == "rehearsed"
-    assert metrics.tag_mode("Yeah, so why Northfield of all places?", qa_questions, thr, targets) == "rehearsed"
-    assert metrics.tag_mode("What is your favorite database engine?", qa_questions, thr, targets) == "improvised"
-    assert metrics.tag_mode("Great, thanks for sharing that context.", qa_questions, thr, targets) == "improvised"
+    assert metrics.tag_mode(loose, prep_questions, thr, targets) == "prepared"
+    assert metrics.tag_mode("Yeah, so why Northfield of all places?", prep_questions, thr, targets) == "prepared"
+    assert metrics.tag_mode("What is your favorite database engine?", prep_questions, thr, targets) == "improvised"
+    assert metrics.tag_mode("Great, thanks for sharing that context.", prep_questions, thr, targets) == "improvised"
 
 
 def test_long_trigger_needs_a_shared_content_token(config):
     # A long trigger can score above the threshold on token_set_ratio purely from shared letters and
-    # function words; with no content word in common it must not be tagged rehearsed.
+    # function words; with no content word in common it must not be tagged prepared.
     qa = ["Do you have any questions for me?"]
     trigger = ("and then maybe you could speak to your data platform and software experience "
                "in a bit more detail")
-    assert metrics.qa_match(trigger, qa) == (0.0, "")
-    assert metrics.tag_mode(trigger, qa, config["rehearsed_match_threshold"], {}) == "improvised"
+    assert metrics.prep_match(trigger, qa) == (0.0, "")
+    assert metrics.tag_mode(trigger, qa, config["prepared_match_threshold"], {}) == "improvised"
     real = "Okay, that is all I had on my side. Do you have any questions for me on anything so far?"
-    score, q = metrics.qa_match(real, qa)
-    assert q == qa[0] and score >= config["rehearsed_match_threshold"]
+    score, q = metrics.prep_match(real, qa)
+    assert q == qa[0] and score >= config["prepared_match_threshold"]
 
 
 def test_mode_tagging_by_target_keywords_and_missing_qa(config):
-    thr, targets = config["rehearsed_match_threshold"], config["answer_targets"]
-    # not in qa_prep, but a prepped category keyword ("compensation") -> rehearsed
-    assert metrics.tag_mode("And what are you thinking on compensation?", ["Why Northfield?"], thr, targets) == "rehearsed"
+    thr, targets = config["prepared_match_threshold"], config["answer_targets"]
+    # not in prep.md, but a prepped category keyword ("compensation") -> prepared
+    assert metrics.tag_mode("And what are you thinking on compensation?", ["Why Northfield?"], thr, targets) == "prepared"
     assert metrics.tag_mode("What is your favorite database engine?", None, thr, targets) == "unknown"
-    assert metrics.tag_mode("Walk me through your background.", None, thr, targets) == "rehearsed"
+    assert metrics.tag_mode("Walk me through your background.", None, thr, targets) == "prepared"
     assert metrics.tag_mode("Walk me through your background.", ["Why Northfield?"], thr, {}) == "improvised"
 
 
-def test_interruptions_not_measured_when_diarizer_cannot_see_overlaps(named_call, qa_questions, config):
+def test_interruptions_not_measured_when_diarizer_cannot_see_overlaps(named_call, prep_questions, config):
     utts, turns, _ = named_call
-    m = metrics.compute_metrics(utts, turns, [], ME, qa_questions, config, overlaps_measured=False)
+    m = metrics.compute_metrics(utts, turns, [], ME, prep_questions, config, overlaps_measured=False)
     assert m["interruptions"]["status"] == "not_measured"
     assert m["interruptions"]["events"] == [] and m["interruptions"]["counts"] == {}
     assert "far-side" in m["interruptions"]["note"]
-    m = metrics.compute_metrics(utts, turns, [], ME, qa_questions, config)
+    m = metrics.compute_metrics(utts, turns, [], ME, prep_questions, config)
     assert m["interruptions"]["status"] == "measured"
 
 
@@ -184,22 +184,22 @@ def test_target_matching_and_flag(config):
     assert metrics.match_target("What is your favorite database engine?", config["answer_targets"]) is None
 
 
-def test_compute_metrics_shape(named_call, qa_questions, config):
+def test_compute_metrics_shape(named_call, prep_questions, config):
     utts, turns, overlaps = named_call
-    m = metrics.compute_metrics(utts, turns, overlaps, ME, qa_questions, config)
+    m = metrics.compute_metrics(utts, turns, overlaps, ME, prep_questions, config)
     assert set(m) >= {"self", "speakers", "answers", "fillers", "pace", "pauses", "interruptions", "mode_comparison"}
     assert m["self"] == ME
     a1, a2, a3 = m["answers"]
-    assert a1["mode"] == "rehearsed" and a2["mode"] == "improvised" and a3["mode"] == "improvised"
+    assert a1["mode"] == "prepared" and a2["mode"] == "improvised" and a3["mode"] == "improvised"
     assert a1["target"] == {"key": "background_walkthrough", "target_s": 90, "over": False}
     assert a2["target"] is None
     assert len(a1["pauses"]) == 1 and a2["pauses"] == []
     assert m["fillers"][ME]["total"] >= 7
     assert m["pace"][ME]["wpm"] > 0
     cmp = m["mode_comparison"]
-    assert cmp["rehearsed"]["count"] == 1 and cmp["improvised"]["count"] == 2
-    assert cmp["rehearsed"]["mean_duration_s"] == pytest.approx(25.35, abs=0.01)
-    assert cmp["rehearsed"]["mean_pause_count"] == 1
+    assert cmp["prepared"]["count"] == 1 and cmp["improvised"]["count"] == 2
+    assert cmp["prepared"]["mean_duration_s"] == pytest.approx(25.35, abs=0.01)
+    assert cmp["prepared"]["mean_pause_count"] == 1
 
 
 def test_over_target_flag(config):

@@ -126,8 +126,8 @@ def _nouns(rows: list[dict] | None, a: dict) -> str:
         return _unavailable(a, "nouns")
     if not rows:
         return "_No proper-noun differences found._"
-    return _table(["Recorder spelling", "Whisper spelling", "Count", "First at", "Direction", "Confirmed"],
-                  [[r["recorder_spelling"], r["whisper_spelling"], r["count"], r["first_timestamp"],
+    return _table(["Reference spelling", "Whisper spelling", "Count", "First at", "Direction", "Confirmed"],
+                  [[r["reference_spelling"], r["whisper_spelling"], r["count"], r["first_timestamp"],
                     r.get("direction", ""), r["confirmed"]] for r in rows])
 
 
@@ -135,7 +135,7 @@ def _modes(m: dict) -> str:
     c = m["mode_comparison"]
     rows = [[mode, v["count"], _fmt(v["mean_duration_s"]), _fmt(v["mean_wpm"]), _fmt(v["mean_filler_rate"]),
              _fmt(v["mean_pause_count"])] for mode, v in c.items()]
-    note = "" if m.get("qa_prep_available") else "\n\n_qa_prep.md not available: all answers tagged `unknown`._"
+    note = "" if m.get("prep_available") else "\n\n_prep.md not available: all answers tagged `unknown`._"
     return _table(["Mode", "Answers", "Mean duration (s)", "Mean WPM", "Mean fillers /100", "Mean pauses"], rows) + note
 
 
@@ -151,7 +151,7 @@ def render_markdown(a: dict) -> str:
         ("Interruptions", _interruptions(m) if has else _unavailable(a, "metrics")),
         ("Tone proxies", _prosody(a.get("prosody"), a, me)),
         ("Proper-noun corrections", _nouns(a.get("noun_corrections"), a)),
-        ("Rehearsed vs improvised", _modes(m) if has else _unavailable(a, "metrics")),
+        ("Prepared vs improvised", _modes(m) if has else _unavailable(a, "metrics")),
     ]
     head = [f"# Audio analysis — {a.get('date', '')}", "",
             f"Audio: `{a.get('audio', '')}` · Tool: audio_debrief v{__version__} · Whisper: "
@@ -183,15 +183,15 @@ def build_json(a: dict) -> dict:
     }
 
 
-def write_outputs(round_dir: str | Path, date: str, analysis: dict, utterances: list[dict] | None) -> list[Path]:
-    round_dir = Path(round_dir)
+def write_outputs(out_dir: str | Path, date: str, analysis: dict, utterances: list[dict] | None) -> list[Path]:
+    out_dir = Path(out_dir)
     status = analysis.get("analysis_status") or {}
     if status.get("report", {}).get("status") == "pending":  # we are the report stage; record success up front
         status["report"] = {"status": "ok", "detail": ""}
     info = dict(analysis.get("transcribe_info") or {})
     info.setdefault("diarization", diarizer_label(analysis.get("diarization_method")))
-    paths = [round_dir / f"transcript_audio_{date}.md", round_dir / f"audio_analysis_{date}.md",
-             round_dir / f"audio_analysis_{date}.json"]
+    paths = [out_dir / f"transcript_audio_{date}.md", out_dir / f"audio_analysis_{date}.md",
+             out_dir / f"audio_analysis_{date}.json"]
     transcript = render_transcript(utterances or [], info) if utterances else \
         "# Audio transcript\n\n_Transcript unavailable — see audio_analysis status table._\n"
     paths[0].write_text(transcript, encoding="utf-8")

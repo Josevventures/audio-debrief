@@ -19,23 +19,28 @@ def pick_compute(device: str) -> tuple[str, str, str]:
     return "cpu", "int8", "Running Whisper on CPU int8 by request."
 
 
-def build_prompt(hotwords: list[str]) -> str:
+def build_prompt(hotwords: list[str], context_prompt: str = "Conversation.") -> str:
+    """Whisper initial prompt: one short sentence about the kind of recording, then the hotwords."""
     seen, ordered = set(), []
     for h in hotwords:
         if h and h.lower() not in seen:
             seen.add(h.lower())
             ordered.append(h)
-    return "Job interview. " + ", ".join(ordered[:60]) + "."
+    context = context_prompt.strip()
+    if not ordered:
+        return context
+    return (context + " " if context else "") + ", ".join(ordered[:60]) + "."
 
 
-def transcribe(wav: str | Path, model_name: str, device: str, hotwords: list[str]) -> dict:
+def transcribe(wav: str | Path, model_name: str, device: str, hotwords: list[str],
+               context_prompt: str = "Conversation.") -> dict:
     from faster_whisper import WhisperModel
 
     dev, compute_type, warning = pick_compute(device)
     model = WhisperModel(model_name, device=dev, compute_type=compute_type)
     segments, info = model.transcribe(
         str(wav), language="en", word_timestamps=True, vad_filter=True,
-        initial_prompt=build_prompt(hotwords), beam_size=5, condition_on_previous_text=False,
+        initial_prompt=build_prompt(hotwords, context_prompt), beam_size=5, condition_on_previous_text=False,
     )
     words = []
     for seg in segments:  # generator: transcription happens here

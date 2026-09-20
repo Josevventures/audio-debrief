@@ -160,13 +160,13 @@ def _content_tokens(text: str) -> set[str]:
     return {t for t in _clean(text).split() if len(t) >= 4 and t not in _FUNCTION_WORDS}
 
 
-def qa_match(question: str, qa_questions: list[str]) -> tuple[float, str]:
+def prep_match(question: str, prep_questions: list[str]) -> tuple[float, str]:
     """Best (token_set_ratio, qa question). A qa question only counts when it shares at least one
     content token with the trigger: on a 40-word trigger token_set_ratio's fallback term sits near
-    60 from shared letters alone, which tagged unrelated prompts as rehearsed on a real call."""
+    60 from shared letters alone, which tagged unrelated prompts as prepared on a real call."""
     best = (0.0, "")
     trigger_tokens = _content_tokens(question)
-    for q in qa_questions:
+    for q in prep_questions:
         if not (_content_tokens(q) & trigger_tokens):
             continue
         score = fuzz.token_set_ratio(_clean(q), _clean(question))
@@ -175,13 +175,13 @@ def qa_match(question: str, qa_questions: list[str]) -> tuple[float, str]:
     return best
 
 
-def tag_mode(question: str, qa_questions: list[str] | None, threshold: float, targets: dict | None = None) -> str:
-    """rehearsed if the trigger matches a prepped category keyword or a qa_prep question (qa_match)."""
+def tag_mode(question: str, prep_questions: list[str] | None, threshold: float, targets: dict | None = None) -> str:
+    """prepared if the trigger matches an answer_targets keyword or a prep.md question (prep_match)."""
     if match_target(question, targets or {}):
-        return "rehearsed"
-    if not qa_questions:
+        return "prepared"
+    if not prep_questions:
         return "unknown"
-    return "rehearsed" if qa_match(question, qa_questions)[0] >= threshold else "improvised"
+    return "prepared" if prep_match(question, prep_questions)[0] >= threshold else "improvised"
 
 
 def _is_backchannel(u: dict, max_words: int, qwords) -> bool:
@@ -235,7 +235,7 @@ def _mean(values: list[float]) -> float | None:
 
 def compare_modes(answers: list[dict]) -> dict:
     out = {}
-    for mode in ("rehearsed", "improvised"):
+    for mode in ("prepared", "improvised"):
         subset = [a for a in answers if a["mode"] == mode]
         out[mode] = {"count": len(subset), "mean_duration_s": _mean([a["duration_s"] for a in subset]),
                      "mean_wpm": _mean([a["wpm"] for a in subset]),
@@ -244,15 +244,15 @@ def compare_modes(answers: list[dict]) -> dict:
     return out
 
 
-def compute_metrics(utterances, turns, overlaps, me, qa_questions, cfg, overlaps_measured: bool = True) -> dict:
+def compute_metrics(utterances, turns, overlaps, me, prep_questions, cfg, overlaps_measured: bool = True) -> dict:
     answers = find_answers(utterances, me, cfg)
     pauses = find_pauses(utterances, me, cfg["pause_threshold_s"])
     for a in answers:
         a["pauses"] = [p for p in pauses if a["start"] <= p["at"] <= a["end"]]
-        a["mode"] = tag_mode(a["question"], qa_questions, cfg["rehearsed_match_threshold"], cfg["answer_targets"])
+        a["mode"] = tag_mode(a["question"], prep_questions, cfg["prepared_match_threshold"], cfg["answer_targets"])
         a["target"] = target_for(a, cfg["answer_targets"])
-        score, q = qa_match(a["question"], qa_questions) if qa_questions else (0.0, "")
-        a["qa_match"] = {"score": score, "question": q} if q else None
+        score, q = prep_match(a["question"], prep_questions) if prep_questions else (0.0, "")
+        a["prep_match"] = {"score": score, "question": q} if q else None
     stats = speaker_stats(utterances)
     fillers, pace = {}, {}
     for sp in stats:
@@ -266,4 +266,4 @@ def compute_metrics(utterances, turns, overlaps, me, qa_questions, cfg, overlaps
         interruptions = {"status": "not_measured", "note": NOT_MEASURED_NOTE, "events": [], "counts": {}}
     return {"self": me, "speakers": stats, "answers": answers, "fillers": fillers, "pace": pace, "pauses": pauses,
             "interruptions": interruptions, "mode_comparison": compare_modes(answers),
-            "qa_prep_available": bool(qa_questions)}
+            "prep_available": bool(prep_questions)}

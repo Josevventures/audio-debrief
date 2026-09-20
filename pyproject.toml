@@ -1,7 +1,7 @@
 [project]
 name = "audio-debrief"
 version = "0.1.0"
-description = "Local audio analysis for interview debriefs: diarized transcript + delivery metrics"
+description = "Local audio analysis for debriefing recorded conversations: diarized transcript + delivery metrics"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "torch==2.8.0",

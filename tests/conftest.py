@@ -33,9 +33,9 @@ def config():
 
 
 @pytest.fixture
-def qa_questions():
-    from audio_debrief.nouns import parse_qa_questions
-    return parse_qa_questions(FIXTURES / "qa_prep.md")
+def prep_questions():
+    from audio_debrief.nouns import parse_prep_questions
+    return parse_prep_questions(FIXTURES / "prep.md")
 
 
 @pytest.fixture
