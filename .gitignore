@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.DS_Store
+
+# local-only artifacts: never commit a voiceprint or a recording's cache
+voiceprints/
+**/.audio_cache/
+*.npz
+*.npy

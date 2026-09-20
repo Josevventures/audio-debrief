@@ -1,0 +1,100 @@
+# audio_debrief configuration. Edit freely; nothing here is secret.
+
+# Display name for you (the enrolled voiceprint) in every output. Override per run with --me.
+self_name: Me
+
+# Filler words/phrases, matched on the word stream (phrases consume their words,
+# so "kind of like" counts once, not as "like" too). "right?" requires the
+# question mark. Verb "like" vs filler "like" is NOT distinguished: raw count.
+fillers:
+  - um
+  - uh
+  - like
+  - kind of like
+  - you know
+  - pretty much
+  - sort of
+  - I mean
+  - "right?"
+
+# Diarizer: "hybrid" (Whisper-VAD units + WeSpeaker embeddings, default; works on
+# far-side phone captures) or "pyannote" (full pipeline; detects overlaps but
+# under-detects far-side speech). Override per run with --diarizer.
+diarizer: hybrid
+hybrid:
+  unit_gap_s: 0.3        # split Whisper words into units at silences longer than this
+  unit_max_s: 3.0        # and cap each unit at this length (on a word boundary)
+  embed_min_len_s: 1.0   # units shorter than this get +/- embed_pad_s of context for embedding
+  embed_pad_s: 0.25
+voiceprint:
+  match_threshold: 0.5   # unit cosine vs the voiceprint >= this -> you
+  ambiguous_low: 0.35    # [ambiguous_low, match_threshold) inherits the previous unit's label
+  cluster_threshold: 0.5 # cosine distance for agglomerative clustering of the other units
+  min_cluster_s: 30.0    # a cluster is a speaker only with this much speech; smaller ones are
+                         # absorbed into the most similar speaker (far-side audio fragments badly)
+  centroid_merge_sim: 0.5 # two speaker clusters whose centroids agree above this are one speaker
+  refine_min: 0.25       # nearest-centroid pass: a non-self unit at least this close to the voiceprint
+                         # and closer to it than to any speaker centroid is relabeled as you
+  speaker_threshold: 0.6 # per-speaker mean embedding vs the voiceprint (pyannote path / fallback)
+
+# An answer = contiguous speech by you >= answer_min_s (other speakers' backchannels
+# of <= backchannel_max_words that are not questions do not break it) that follows
+# someone else's speech. The trigger "question" is the last question_tail_words of that
+# other-speaker run; whether it looks like a question is reported, not required.
+answer_min_s: 20
+question_tail_words: 40
+backchannel_max_words: 3
+question_words:
+  [who, what, when, where, why, how, which, tell, describe, walk, give, explain,
+   talk, share, can, could, would, do, does, did, is, are, was, were, have, has, should]
+
+# Merge consecutive same-speaker words into one utterance; split on silence > this.
+utterance_gap_s: 1.5
+# A pause is a gap longer than this inside your speech (no other speaker in between).
+pause_threshold_s: 2.0
+# Pause kind from the WAV: RMS inside the gap / your whole-call speech RMS. Below this
+# ratio it is "silence"; otherwise "unvoiced/possible backchannel" (energy Whisper
+# did not transcribe: the other side's "mm-hmm", a laugh, breath). Judged against
+# whole-call speech, not the 2 s before the gap, because that tail is usually trailing off.
+pause_silence_ratio: 0.6
+# Only overlaps at least this long count as interruptions.
+overlap_min_s: 0.5
+# rapidfuzz token_set_ratio >= this against a qa_prep.md question => "rehearsed"
+# (a trigger matching an answer_targets pattern is rehearsed regardless).
+rehearsed_match_threshold: 60
+
+# Answer-length targets in seconds, matched by regex (case-insensitive) on the
+# triggering question. First match wins; answers longer than the target are flagged.
+# These defaults suit a job interview; edit or empty the list for other conversations.
+answer_targets:
+  background_walkthrough:
+    seconds: 90
+    pattern: "walk me through|background|journey|about yourself|tell me about you\\b"
+  why_company:
+    seconds: 60
+    pattern: "why (us|this firm|this company|this role|consulting|here)|why are you interested"
+  why_leaving:
+    seconds: 60
+    pattern: "why are you leaving|looking for next|why now|what are you looking for"
+  behavioral:
+    seconds: 120
+    pattern: "tell me about a time|describe a (time|situation)|give me an example|example of when"
+  compensation:
+    seconds: 30
+    pattern: "compensation|salary|comp expectations"
+  logistics:
+    seconds: 30
+    pattern: "relocat|travel|timeline|interviewing elsewhere|notice period|start date"
+
+# Fixed hotwords for the Whisper initial prompt and the proper-noun table.
+# Add your own name, your employers and schools, and the company you are talking to;
+# the output folder's parent name and --speakers are added at run time.
+hotwords:
+  - MBA
+  - AI
+  - private equity
+  - due diligence
+  - venture capital
+  - carve-out
+  - CRM
+  - PMO

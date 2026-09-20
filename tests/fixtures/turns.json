@@ -1,0 +1,55 @@
+{
+ "turns": [
+  {
+   "speaker": "SPEAKER_00",
+   "start": 0.0,
+   "end": 4.0
+  },
+  {
+   "speaker": "SPEAKER_01",
+   "start": 5.0,
+   "end": 20.0
+  },
+  {
+   "speaker": "SPEAKER_01",
+   "start": 22.5,
+   "end": 31.0
+  },
+  {
+   "speaker": "SPEAKER_00",
+   "start": 30.5,
+   "end": 33.0
+  },
+  {
+   "speaker": "SPEAKER_01",
+   "start": 33.5,
+   "end": 45.0
+  },
+  {
+   "speaker": "SPEAKER_00",
+   "start": 46.0,
+   "end": 48.0
+  },
+  {
+   "speaker": "SPEAKER_01",
+   "start": 49.0,
+   "end": 72.0
+  },
+  {
+   "speaker": "SPEAKER_00",
+   "start": 73.0,
+   "end": 74.0
+  },
+  {
+   "speaker": "SPEAKER_01",
+   "start": 75.0,
+   "end": 100.0
+  }
+ ],
+ "overlaps": [
+  {
+   "start": 30.5,
+   "end": 31.0
+  }
+ ]
+}
