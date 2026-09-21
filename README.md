@@ -1,5 +1,10 @@
 # audio-debrief
 
+![tests](https://github.com/Josevventures/audio-debrief/actions/workflows/tests.yml/badge.svg)
+
+**Status:** finished work sample, maintained on my own cadence. Extracted from a
+private multi-agent system; the git history starts at extraction.
+
 Local, offline analysis of a recorded conversation. Feed it an audio file and it
 produces a diarized, timestamped transcript plus delivery metrics for one speaker
 (you): talk time, answer lengths against targets, pace, fillers, pauses, tone
@@ -237,7 +242,9 @@ uv run pytest
 
 Unit tests run on synthetic fixtures (a short two-speaker call with invented
 names); no audio and no models are needed. `tests/fixtures/make_fixtures.py`
-regenerates the word and turn fixtures.
+regenerates the word and turn fixtures. CI runs the same suite on a light
+install (numpy, rapidfuzz, pyyaml, librosa, soundfile) without torch or the
+speech models, which is why the badge above stays cheap.
 
 ## License
 
