@@ -1,0 +1,21 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The test suite exercises alignment, diarization post-processing, metrics,
+      # prosody, noun diffing, and report rendering on fixtures. None of it needs
+      # torch, faster-whisper, or pyannote, so CI installs only the light deps
+      # instead of the multi-GB CUDA stack `uv sync` would pull.
+      - run: pip install pytest numpy rapidfuzz pyyaml librosa soundfile
+      - run: python -m pytest tests -q
