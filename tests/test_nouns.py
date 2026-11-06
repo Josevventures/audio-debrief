@@ -64,7 +64,7 @@ def pairs(rec, whi, hotwords=HOT):
 
 
 def test_junk_pairs_are_dropped():
-    assert pairs("I think Disney is fine now.", "I think this is fine now.") == {}
+    assert pairs("I think Fernwood is fine now.", "I think this is fine now.") == {}
     assert pairs("Then um I left early.", "Then I I left early.") == {}
     assert pairs("Then we did it.", "Then I did it.") == {}
     assert pairs("Then I've done it.", "Then I done it.") == {}
